@@ -2947,3 +2947,43 @@ func (c *concurrentBenchmark) makeWriters(n int, mode string) {
 	}
 	wait.Wait()
 }
+
+func TestLimit(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer db.Close()
+
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := Limit(conn, sqlite3.SQLITE_LIMIT_COLUMN, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("Default maximum column count: %d", n)
+
+	n2, err := Limit(conn, sqlite3.SQLITE_LIMIT_COLUMN, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if g, e := n2, n; g != e {
+		t.Fatalf("got %d, expected %d", g, e)
+	}
+
+	n3, err := Limit(conn, sqlite3.SQLITE_LIMIT_COLUMN, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("Maximum column count now (should be 100): %d", n3)
+	if g, e := n3, 100; g != e {
+		t.Fatalf("got %d, expected %d", g, e)
+	}
+}
