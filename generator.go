@@ -151,7 +151,7 @@ import (
 //	-lpthread
 
 const (
-	volatiles = "-volatile=sqlite3_io_error_pending,sqlite3_open_file_count,sqlite3_pager_readdb_count,sqlite3_pager_writedb_count,sqlite3_pager_writej_count,sqlite3_search_count,sqlite3_sort_count,saved_cnt,randomnessPid"
+	volatiles = "-volatile=sqlite3_io_error_pending,sqlite3_open_file_count,sqlite3_pager_readdb_count,sqlite3_pager_writedb_count,sqlite3_pager_writej_count,sqlite3_search_count,sqlite3_sort_count,saved_cnt,randomnessPid,sqlite3CoverageCounter,yyTraceFILE,yyTracePrompt"
 )
 
 // 2022-11-27 Removing -DSQLITE_ENABLE_SNAPSHOT from configTest. This #define
@@ -269,12 +269,12 @@ var (
 		sz       int
 		dev      bool
 	}{
-		{sqliteDir, "https://www.sqlite.org/2023/sqlite-amalgamation-3410200.zip", 2457, false},
-		{sqliteSrcDir, "https://www.sqlite.org/2023/sqlite-src-3410200.zip", 12814, false},
+		{sqliteDir, "https://www.sqlite.org/2023/sqlite-amalgamation-3420000.zip", 2457, false},
+		{sqliteSrcDir, "https://www.sqlite.org/2023/sqlite-src-3420000.zip", 12814, false},
 	}
 
-	sqliteDir    = filepath.FromSlash("testdata/sqlite-amalgamation-3410200")
-	sqliteSrcDir = filepath.FromSlash("testdata/sqlite-src-3410200")
+	sqliteDir    = filepath.FromSlash("testdata/sqlite-amalgamation-3420000")
+	sqliteSrcDir = filepath.FromSlash("testdata/sqlite-src-3420000")
 )
 
 func download() {
@@ -464,6 +464,7 @@ func main() {
 	makeSpeedTest(goos, goarch, more)
 	makeTestfixture(goos, goarch, more)
 	ccgo.MustCopyDir(true, "testdata/tcl", sqliteSrcDir+"/test", nil)
+	os.RemoveAll(filepath.FromSlash("testdata/tcl/json"))
 	ccgo.MustCopyDir(true, "testdata/tcl", "testdata/overlay", nil)
 }
 
@@ -505,6 +506,11 @@ func configure(goos, goarch string) {
 	}
 
 	cmd = newCmd("make", "parse.h", "opcodes.h")
+	if err = cmd.Run(); err != nil {
+		fail("%s\n", err)
+	}
+
+	cmd = newCmd("make", "testfixture")
 	if err = cmd.Run(); err != nil {
 		fail("%s\n", err)
 	}
@@ -615,16 +621,19 @@ func makeTestfixture(goos, goarch string, more []string) {
 	}
 	configure(goos, goarch)
 
-	var defines, includes []string
+	// ccgo.MustCopyFile(false, "sqlite3ext.h", "tsrc/sqlite3ext.h", nil)
+	// ccgo.MustCopyFile(false, "sqlite3session.h", "ext/session/sqlite3session.h", nil)
+	var defines []string
+	includes := []string{"-I" + sqliteSrcDir}
 	switch goos {
 	case "freebsd", "openbsd":
-		includes = []string{"-I/usr/local/include/tcl8.6"}
+		includes = append(includes, "-I/usr/local/include/tcl8.6")
 	case "linux":
-		includes = []string{"-I/usr/include/tcl8.6"}
+		includes = append(includes, "-I/usr/include/tcl8.6")
 	case "windows":
-		includes = []string{"-I/usr/include/tcl8.6"}
+		includes = append(includes, "-I/usr/include/tcl8.6")
 	case "netbsd":
-		includes = []string{"-I/usr/pkg/include"}
+		includes = append(includes, "-I/usr/pkg/include")
 		defines = []string{
 			"-D__libc_cond_broadcast=pthread_cond_broadcast",
 			"-D__libc_cond_destroy=pthread_cond_destroy",

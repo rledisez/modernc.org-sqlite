@@ -152,7 +152,7 @@ func (m *mutex) enter(id int32) {
 	if !m.recursive {
 		// MutexCounters.Inc(0)
 		m.Lock()
-		m.id = id
+		atomic.StoreInt32(&m.id, id)
 		return
 	}
 
@@ -207,7 +207,7 @@ func (m *mutex) try(id int32) int32 {
 
 func (m *mutex) leave(id int32) {
 	if !m.recursive {
-		m.id = 0
+		atomic.StoreInt32(&m.id, 0)
 		m.Unlock()
 		return
 	}
