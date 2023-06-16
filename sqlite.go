@@ -143,6 +143,57 @@ func newResult(c *conn) (_ *result, err error) {
 	return r, nil
 }
 
+func (c *conn) Serialize(ctx context.Context) (v []byte, err error) {
+	pLen := c.tls.Alloc(8)
+	defer c.tls.Free(8)
+
+	zSchema := sqlite3.Xsqlite3_db_name(c.tls, c.db, 0)
+	if zSchema == 0 {
+		return nil, fmt.Errorf("failed to get main db name")
+	}
+
+	if ctx != nil && ctx.Done() != nil {
+		defer interruptOnDone(ctx, c, nil)()
+	}
+
+	pBuf := sqlite3.Xsqlite3_serialize(c.tls, c.db, zSchema, pLen, 0)
+	bufLen := *(*sqlite3.Sqlite3_int64)(unsafe.Pointer(pLen))
+	if pBuf != 0 {
+		defer sqlite3.Xsqlite3_free(c.tls, pBuf)
+	}
+	if bufLen <= 0 {
+		return nil, fmt.Errorf("invalid length returned: %d", bufLen)
+	} else if pBuf == 0 || bufLen == 0 {
+		return nil, nil
+	}
+
+	v = make([]byte, bufLen)
+	copy(v, (*libc.RawMem)(unsafe.Pointer(pBuf))[:bufLen:bufLen])
+	return v, nil
+}
+
+func (c *conn) Deserialize(ctx context.Context, buf []byte) (err error) {
+	bufLen := len(buf)
+	pBuf := c.tls.Alloc(bufLen) // free will be done if it fails or on close, must not be freed here
+
+	copy((*libc.RawMem)(unsafe.Pointer(pBuf))[:bufLen:bufLen], buf)
+
+	zSchema := sqlite3.Xsqlite3_db_name(c.tls, c.db, 0)
+	if zSchema == 0 {
+		return fmt.Errorf("failed to get main db name")
+	}
+
+	if ctx != nil && ctx.Done() != nil {
+		defer interruptOnDone(ctx, c, nil)()
+	}
+
+	rc := sqlite3.Xsqlite3_deserialize(c.tls, c.db, zSchema, pBuf, int64(bufLen), int64(bufLen), sqlite3.SQLITE_DESERIALIZE_RESIZEABLE|sqlite3.SQLITE_DESERIALIZE_FREEONCLOSE)
+	if rc != 0 {
+		return c.errstr(rc)
+	}
+	return nil
+}
+
 // LastInsertId returns the database's auto-generated ID after, for example, an
 // INSERT into a table with primary key.
 func (r *result) LastInsertId() (int64, error) {
